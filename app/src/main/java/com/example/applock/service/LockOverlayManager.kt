@@ -1,6 +1,7 @@
 package com.example.applock.service
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.view.Gravity
@@ -19,6 +20,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.applock.camera.IntruderPhotoCapturer
 import com.example.applock.data.AppLockPreferences
+import com.example.applock.ui.BiometricPromptActivity
 import com.example.applock.ui.LockScreenOverlay
 
 class LockOverlayManager(private val context: Context) {
@@ -31,6 +33,19 @@ class LockOverlayManager(private val context: Context) {
 
     fun showLockOverlay(packageName: String, onAuthenticated: () -> Unit) {
         if (overlayView != null) return
+
+        currentAuthCallback = {
+            failedAttempts = 0
+            dismiss()
+            onAuthenticated()
+        }
+
+        currentFailedCallback = {
+            failedAttempts++
+            if (failedAttempts >= 2) {
+                photoCapturer.captureIntruderPhoto(packageName)
+            }
+        }
 
         val layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -58,17 +73,22 @@ class LockOverlayManager(private val context: Context) {
             setContent {
                 LockScreenOverlay(
                     targetPackage = packageName,
-                    expectedPin = prefs.getPin() ?: "1234",
+                    lockType = prefs.getLockType(),
+                    biometricEnabled = prefs.isBiometricEnabled(),
+                    expectedPin = prefs.getPin(),
+                    expectedPassword = prefs.getPassword(),
+                    expectedPattern = prefs.getPattern(),
+                    onBiometricRequest = {
+                        val intent = Intent(context, BiometricPromptActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+                        }
+                        context.startActivity(intent)
+                    },
                     onSuccess = {
-                        failedAttempts = 0
-                        dismiss()
-                        onAuthenticated()
+                        currentAuthCallback?.invoke()
                     },
                     onFailure = {
-                        failedAttempts++
-                        if (failedAttempts >= 2) {
-                            photoCapturer.captureIntruderPhoto(packageName)
-                        }
+                        currentFailedCallback?.invoke()
                     }
                 )
             }
@@ -83,9 +103,24 @@ class LockOverlayManager(private val context: Context) {
             windowManager.removeView(it)
             overlayView = null
         }
+        currentAuthCallback = null
+        currentFailedCallback = null
     }
 
     fun isShowing(): Boolean = overlayView != null
+
+    companion object {
+        private var currentAuthCallback: (() -> Unit)? = null
+        private var currentFailedCallback: (() -> Unit)? = null
+
+        fun notifyBiometricSuccess() {
+            currentAuthCallback?.invoke()
+        }
+
+        fun notifyBiometricFailed() {
+            currentFailedCallback?.invoke()
+        }
+    }
 
     private class OverlayLifecycleOwner : SavedStateRegistryOwner, ViewModelStoreOwner {
         private val lifecycleRegistry = LifecycleRegistry(this)

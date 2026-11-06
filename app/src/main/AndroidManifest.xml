@@ -38,6 +38,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.BiometricPromptActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="false" />
+
         <!-- Zero-polling, Event-driven foreground app tracker -->
         <service
             android:name=".service.AppMonitorAccessibilityService"
