@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">SecureLock</string>
+    <string name="accessibility_service_description">Monitors app launches to provide real-time lock protection.</string>
+</resources>
